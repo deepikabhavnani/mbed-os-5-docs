@@ -33,37 +33,52 @@ Arm linker script template:
 
 /* Device specific values */
 
-#define ROM_START   0x08000000
-#define ROM_SIZE    0x200000
-#define RAM_START   0x20000000
-#define RAM_SIZE    0x30000
+/* Tools provide -DMBED_ROM_START=xxx -DMBED_ROM_SIZE=xxx -DMBED_RAM_START=xxx -DMBED_RAM_SIZE=xxx */
+/* Vectors in RAM */
 #define VECTORS     107   /* This value must match NVIC_NUM_VECTORS */
+
 
 /* Common - Do not change */
 
 #if !defined(MBED_APP_START)
-  #define MBED_APP_START ROM_START
+  #define MBED_APP_START  MBED_ROM_START
 #endif
 
 #if !defined(MBED_APP_SIZE)
-  #define MBED_APP_SIZE ROM_SIZE
+  #define MBED_APP_SIZE  MBED_ROM_SIZE
+#endif
+
+#if !defined(MBED_BOOT_STACK_SIZE)
+  #define MBED_BOOT_STACK_SIZE  0x400
 #endif
 
 /* Round up VECTORS_SIZE to 8 bytes */
-#define VECTORS_SIZE (((VECTORS * 4) + 7) & ~7)
+#define VECTORS_SIZE (((VECTORS * 4) + 7) AND ~7)
 
-LR_IROM1 MBED_APP_START MBED_APP_SIZE  {
-
-  ER_IROM1 MBED_APP_START MBED_APP_SIZE  {
-    *.o (RESET, +First)
-    *(InRoot$$Sections)
-    .ANY (+RO)
+LR_IROM1 MBED_APP_START  MBED_APP_SIZE  {
+  ER_IROM1 MBED_APP_START  MBED_APP_SIZE  {  ; load address = execution address
+   *(RESET, +First)
+   *(InRoot$$Sections)
+   .ANY (+RO)
   }
 
-  RW_IRAM1 (RAM_START + VECTORS_SIZE) (RAM_SIZE - VECTORS_SIZE)  {  ; RW data
-    .ANY (+RW +ZI)
+  ER_IRAMVEC MBED_RAM_START EMPTY VECTORS_SIZE  {  ; Reserve for vectors
+  }
+
+  ARM_LIB_STACK (MBED_RAM_START + VECTORS_SIZE) EMPTY MBED_BOOT_STACK_SIZE  {
+  }
+
+  RW_IRAM1 AlignExpr(+0, 16)  {  ; 16 byte-aligned
+   .ANY (+RW +ZI)
+  }
+  
+  ; Extern SRAM for HEAP
+  ARM_LIB_HEAP AlignExpr(+0, 16) EMPTY (MBED_RAM_START + MBED_RAM_SIZE - AlignExpr(ImageLimit(RW_IRAM1), 16))  {
   }
 }
+ScatterAssert(LoadLimit(LR_IROM1) <= (MBED_APP_START + MBED_APP_SIZE))    ; 512 KB APROM
+ScatterAssert(ImageLimit(RW_IRAM1) <= (MBED_RAM_START + MBED_RAM_SIZE))   ; 64 KB SRAM (internal)
+
 ```
 
 IAR linker script template:
